@@ -16,6 +16,10 @@
 #include "stats.h"
 #include "timer.h"
 
+#define MaxNumThread 128
+extern bool ThreadPool[MaxNumThread];
+extern int curPointer; //Last assigned location
+extern int curThreadNum; //Number of current threads
 // Initialization and cleanup routines
 extern void Initialize(int argc, char **argv); 	// Initialization,
 						// called before anything else

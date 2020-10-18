@@ -25,21 +25,25 @@
 //----------------------------------------------------------------------
 // Scheduler::Scheduler
 // 	Initialize the list of ready but not running threads to empty.
+//  Initialize the list of all threads to empty.
 //----------------------------------------------------------------------
 
 Scheduler::Scheduler()
 { 
-    readyList = new List; 
+    readyList = new List;
+    threadList = new List;
 } 
 
 //----------------------------------------------------------------------
 // Scheduler::~Scheduler
 // 	De-allocate the list of ready threads.
+//  De-allocate all thread list.
 //----------------------------------------------------------------------
 
 Scheduler::~Scheduler()
 { 
-    delete readyList; 
+    delete readyList;
+    delete threadList;
 } 
 
 //----------------------------------------------------------------------
@@ -54,9 +58,8 @@ void
 Scheduler::ReadyToRun (Thread *thread)
 {
     DEBUG('t', "Putting thread %s on ready list.\n", thread->getName());
-
     thread->setStatus(READY);
-    readyList->Append((void *)thread);
+    readyList->SortedInsert((void *)thread,thread->getPriority());
 }
 
 //----------------------------------------------------------------------
@@ -70,7 +73,9 @@ Scheduler::ReadyToRun (Thread *thread)
 Thread *
 Scheduler::FindNextToRun ()
 {
-    return (Thread *)readyList->Remove();
+    int priority;
+    Thread* nextThread = (Thread *)readyList->SortedRemove(&priority);
+    return nextThread;
 }
 
 //----------------------------------------------------------------------
@@ -112,9 +117,7 @@ Scheduler::Run (Thread *nextThread)
     // in switch.s.  You may have to think
     // a bit to figure out what happens after this, both from the point
     // of view of the thread and from the perspective of the "outside world".
-
     SWITCH(oldThread, nextThread);
-    
     DEBUG('t', "Now in thread \"%s\"\n", currentThread->getName());
 
     // If the old thread gave up the processor because it was finishing,
@@ -144,4 +147,39 @@ Scheduler::Print()
 {
     printf("Ready list contents:\n");
     readyList->Mapcar((VoidFunctionPtr) ThreadPrint);
+}
+
+//----------------------------------------------------------------------
+// Scheduler::Print
+// 	Print the scheduler state -- in other words, the contents of
+//	the ready list.  For debugging.
+//----------------------------------------------------------------------
+void
+Scheduler::PrintThreads()
+{
+    printf("uid\ttid\tname\tstatus\n");
+    threadList->Mapcar((VoidFunctionPtr) NewThreadPrint);
+}
+
+void
+Scheduler::MinusTimeSlice(Thread* thread)
+{
+    thread->addTimeSlice(-1);
+    if(thread->getTimeSlice()<=0){
+        if(thread->getPriority()<=PriorityRange)
+            thread->setPriority(thread->getPriority()+1);
+        thread->addTimeSlice(thread->getPriority()+1);
+
+    }
+}
+
+void
+Scheduler::InsertThread(Thread* thread,bool isHeadInsert){
+    if(!isHeadInsert) threadList->SortedHeaderInsert((void *) thread,thread->getPriority());
+    else readyList->SortedInsert((void *) thread,thread->getPriority());
+}
+
+void
+Scheduler::DeleteThread(Thread *thread){
+    threadList->RemoveByItem((void*) thread);
 }

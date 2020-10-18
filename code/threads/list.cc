@@ -236,3 +236,56 @@ List::SortedRemove(int *keyPtr)
     return thing;
 }
 
+void*
+List::RemoveByItem(void *item){
+    if(first==NULL) return NULL;
+    ListElement *element = first;
+    ListElement *pre = NULL;
+    void *thing;
+
+    if (IsEmpty())
+        return NULL;
+    while(element!=NULL && element->item != item) {
+        pre=element;
+        element=element->next;
+    }
+    if(element == NULL) return NULL;
+    if(first != NULL && element == first){
+        first = first->next;
+        if(first == NULL) last = NULL;
+    }
+    if(pre!=NULL)
+        pre->next = element->next;
+    if(element->next == NULL) {
+        last = pre;
+    }
+    thing = element->item;
+    delete element;
+    return thing;
+}
+
+void
+List::SortedHeaderInsert(void *item, int sortKey)
+{
+    ListElement *element = new ListElement(item, sortKey);
+    ListElement *ptr;		// keep track
+
+    if (IsEmpty()) {	// if list is empty, put
+        first = element;
+        last = element;
+    } else if (sortKey < first->key) {
+        // item goes on front of list
+        element->next = first;
+        first = element;
+    } else {		// look for first elt in list bigger than item
+        for (ptr = first; ptr->next != NULL; ptr = ptr->next) {
+            if (sortKey <= ptr->next->key) {
+                element->next = ptr->next;
+                ptr->next = element;
+                return;
+            }
+        }
+        last->next = element;		// item goes at end of list
+        last = element;
+    }
+}

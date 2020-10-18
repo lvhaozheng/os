@@ -58,15 +58,17 @@ THREAD_C =../threads/main.cc\
 	../threads/thread.cc\
 	../threads/utility.cc\
 	../threads/threadtest.cc\
+	../threads/testmf.cc\
 	../machine/interrupt.cc\
 	../machine/sysdep.cc\
 	../machine/stats.cc\
-	../machine/timer.cc
+	../machine/timer.cc\
+	../threads/testmf.cc
 
 THREAD_S = ../threads/switch.s
 
 THREAD_O =main.o list.o scheduler.o synch.o synchlist.o system.o thread.o \
-	utility.o threadtest.o interrupt.o stats.o sysdep.o timer.o
+	utility.o threadtest.o interrupt.o stats.o sysdep.o timer.o testmf.o
 
 USERPROG_H = ../userprog/addrspace.h\
 	../userprog/bitmap.h\

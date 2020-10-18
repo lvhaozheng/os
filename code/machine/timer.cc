@@ -81,5 +81,5 @@ Timer::TimeOfNextInterrupt()
     if (randomize)
 	return 1 + (Random() % (TimerTicks * 2));
     else
-	return TimerTicks; 
+	return TimerTicks;
 }

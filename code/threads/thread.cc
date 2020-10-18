@@ -21,7 +21,7 @@
 #include "system.h"
 
 #define STACK_FENCEPOST 0xdeadbeef	// this is put at the top of the
-					// execution stack, for detecting 
+					// execution stack, for detecting
 					// stack overflows
 
 //----------------------------------------------------------------------
@@ -34,13 +34,22 @@
 
 Thread::Thread(char* threadName)
 {
+    setTid();
+    if(tid == -1) {
+        printf("Thread pool full\n");
+        return;
+    }
+    setUid();
     name = threadName;
     stackTop = NULL;
     stack = NULL;
     status = JUST_CREATED;
+    priority = DefaultPriority;
+    timeSlice = 1;
 #ifdef USER_PROGRAM
     space = NULL;
 #endif
+    scheduler->InsertThread(this, false);
 }
 
 //----------------------------------------------------------------------
@@ -60,6 +69,9 @@ Thread::~Thread()
     DEBUG('t', "Deleting thread \"%s\"\n", name);
 
     ASSERT(this != currentThread);
+    curThreadNum--;
+    ThreadPool[tid] = false;
+    scheduler->DeleteThread(this);
     if (stack != NULL)
 	DeallocBoundedArray((char *) stack, StackSize * sizeof(int));
 }
@@ -84,20 +96,124 @@ Thread::~Thread()
 //	"arg" is a single argument to be passed to the procedure.
 //----------------------------------------------------------------------
 
-void 
+void
 Thread::Fork(VoidFunctionPtr func, int arg)
 {
     DEBUG('t', "Forking thread \"%s\" with func = 0x%x, arg = %d\n",
 	  name, (int) func, arg);
-    
+
     StackAllocate(func, arg);
 
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
-    scheduler->ReadyToRun(this);	// ReadyToRun assumes that interrupts 
+    scheduler->ReadyToRun(this);	// ReadyToRun assumes that interrupts
 					// are disabled!
     (void) interrupt->SetLevel(oldLevel);
-}    
+//    currentThread->Yield(); //基于抢占的调度算法
+}
 
+//----------------------------------------------------------------------
+// Thread::getTid
+// get thread id
+//----------------------------------------------------------------------
+int
+Thread::getTid() {
+    return tid;
+}
+
+//----------------------------------------------------------------------
+// Thread::setTid
+// Set TID and allocate it by looking up the unallocated thread ID in the thread pool.
+// The next available thread ID is searched linearly from the last allocation place,
+// and the thread ID is allocated to the thread. The flag position in the thread pool is 1.
+//----------------------------------------------------------------------
+void
+Thread::setTid() {
+    if(curThreadNum==MaxNumThread) {
+        tid=-1;
+        return;
+    }
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);
+    int num=curPointer;
+    while(ThreadPool[num%MaxNumThread]){
+        num=num%MaxNumThread+1;
+    }
+    ThreadPool[num]=true;
+    tid = num;
+    curPointer=num;
+    curThreadNum++;
+    (void) interrupt->SetLevel(oldLevel);
+}
+
+//----------------------------------------------------------------------
+// Thread::getUid
+// get the thread of user id
+//----------------------------------------------------------------------
+int
+Thread::getUid() {
+    return uid;
+}
+
+//----------------------------------------------------------------------
+// Thread::setUid
+// set thread id
+//----------------------------------------------------------------------
+void
+Thread::setUid() {
+    uid= 711;  //Because nachos has no user concept, by default, all users are one, using my girlfriend's birthday as the uid
+}
+
+//----------------------------------------------------------------------
+// Thread::getPriority
+// get priority
+//----------------------------------------------------------------------
+int
+Thread::getPriority() {
+    return priority;
+}
+
+//----------------------------------------------------------------------
+// Thread::setPriority
+// set thread priority
+//----------------------------------------------------------------------
+void
+Thread::setPriority(int priority) {
+    if( priority<0 ) this->priority=0;
+    else if(priority>PriorityRange) this->priority=PriorityRange;
+    else this->priority=priority;
+}
+
+//----------------------------------------------------------------------
+// Thread::setTimeSlice
+// set thread time slice
+//----------------------------------------------------------------------
+void
+Thread::setTimeSlice(int timeSlice)
+{
+    this->timeSlice=timeSlice;
+}
+
+//----------------------------------------------------------------------
+// Thread::getTimeSlice
+// get thread time slice
+//----------------------------------------------------------------------
+int
+Thread::getTimeSlice()
+{
+    return timeSlice;
+}
+
+//----------------------------------------------------------------------
+// Thread::addTimeSlice
+// add number time slice
+//----------------------------------------------------------------------
+void
+Thread::addTimeSlice(int num)
+{
+    if(timeSlice+num<0) timeSlice=0;
+    else timeSlice += num;
+}
+
+//
 //----------------------------------------------------------------------
 // Thread::CheckOverflow
 // 	Check a thread's stack to see if it has overrun the space
@@ -143,12 +259,12 @@ Thread::CheckOverflow()
 void
 Thread::Finish ()
 {
-    (void) interrupt->SetLevel(IntOff);		
+    (void) interrupt->SetLevel(IntOff);
     ASSERT(this == currentThread);
-    
+
     DEBUG('t', "Finishing thread \"%s\"\n", getName());
-    
     threadToBeDestroyed = currentThread;
+
     Sleep();					// invokes SWITCH
     // not reached
 }
@@ -176,15 +292,18 @@ Thread::Yield ()
 {
     Thread *nextThread;
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
-    
     ASSERT(this == currentThread);
-    
+
     DEBUG('t', "Yielding thread \"%s\"\n", getName());
-    
+
     nextThread = scheduler->FindNextToRun();
     if (nextThread != NULL) {
-	scheduler->ReadyToRun(this);
-	scheduler->Run(nextThread);
+        if(nextThread->getPriority() <= this->getPriority()) {
+            scheduler->ReadyToRun(this);
+            scheduler->Run(nextThread);
+        }else{
+            scheduler->InsertThread(nextThread, true);
+        }
     }
     (void) interrupt->SetLevel(oldLevel);
 }
@@ -212,16 +331,16 @@ void
 Thread::Sleep ()
 {
     Thread *nextThread;
-    
+
     ASSERT(this == currentThread);
     ASSERT(interrupt->getLevel() == IntOff);
-    
+
     DEBUG('t', "Sleeping thread \"%s\"\n", getName());
 
     status = BLOCKED;
     while ((nextThread = scheduler->FindNextToRun()) == NULL)
 	interrupt->Idle();	// no one to run, wait for an interrupt
-        
+
     scheduler->Run(nextThread); // returns when we've been signalled
 }
 
@@ -236,7 +355,7 @@ Thread::Sleep ()
 static void ThreadFinish()    { currentThread->Finish(); }
 static void InterruptEnable() { interrupt->Enable(); }
 void ThreadPrint(int arg){ Thread *t = (Thread *)arg; t->Print(); }
-
+void NewThreadPrint(int arg){Thread *t = (Thread *)arg; t->NewPrint(); }
 //----------------------------------------------------------------------
 // Thread::StackAllocate
 //	Allocate and initialize an execution stack.  The stack is
@@ -275,7 +394,7 @@ Thread::StackAllocate (VoidFunctionPtr func, int arg)
 #endif  // HOST_SPARC
     *stack = STACK_FENCEPOST;
 #endif  // HOST_SNAKE
-    
+
     machineState[PCState] = (int) ThreadRoot;
     machineState[StartupPCState] = (int) InterruptEnable;
     machineState[InitialPCState] = (int) func;
@@ -306,8 +425,8 @@ Thread::SaveUserState()
 // Thread::RestoreUserState
 //	Restore the CPU state of a user program on a context switch.
 //
-//	Note that a user program thread has *two* sets of CPU registers -- 
-//	one for its state while executing user code, one for its state 
+//	Note that a user program thread has *two* sets of CPU registers --
+//	one for its state while executing user code, one for its state
 //	while executing kernel code.  This routine restores the former.
 //----------------------------------------------------------------------
 
@@ -317,4 +436,6 @@ Thread::RestoreUserState()
     for (int i = 0; i < NumTotalRegs; i++)
 	machine->WriteRegister(i, userRegisters[i]);
 }
+
+
 #endif

@@ -39,7 +39,6 @@
 
 #include "copyright.h"
 #include "utility.h"
-
 #ifdef USER_PROGRAM
 #include "machine.h"
 #include "addrspace.h"
@@ -49,8 +48,8 @@
 // The SPARC and MIPS only need 10 registers, but the Snake needs 18.
 // For simplicity, this is just the max over all architectures.
 #define MachineStateSize 18 
-
-
+#define PriorityRange 10
+#define DefaultPriority 5
 // Size of the thread's private execution stack.
 // WATCH OUT IF THIS ISN'T BIG ENOUGH!!!!!
 #define StackSize	(4 * 1024)	// in words
@@ -61,7 +60,7 @@ enum ThreadStatus { JUST_CREATED, RUNNING, READY, BLOCKED };
 
 // external function, dummy routine whose sole job is to call Thread::Print
 extern void ThreadPrint(int arg);	 
-
+extern void NewThreadPrint(int arg);
 // The following class defines a "thread control block" -- which
 // represents a single thread of execution.
 //
@@ -79,6 +78,12 @@ class Thread {
     // THEY MUST be in this position for SWITCH to work.
     int* stackTop;			 // the current stack pointer
     int machineState[MachineStateSize];  // all registers except for stackTop
+
+  private:
+    int uid; //The user ID that created the thread
+    int tid; //the ID of thread
+    int priority;//from 0 to PriorityRange
+    int timeSlice; //时间片
 
   public:
     Thread(char* debugName);		// initialize a Thread 
@@ -101,7 +106,33 @@ class Thread {
     void setStatus(ThreadStatus st) { status = st; }
     char* getName() { return (name); }
     void Print() { printf("%s, ", name); }
+    void NewPrint(){
+        char* statusString;
+        switch (status)
+        {
+            case JUST_CREATED: statusString = "JUST_CREATED"; break;
+            case RUNNING: statusString = "RUNNING"; break;
+            case READY: statusString = "READY"; break;
+            case BLOCKED: statusString = "BLOCKED"; break;
+            default: break;
+        }
+        printf("%d\t%d\t%s\t%s\n", uid,tid,name,statusString);
+    }
+    int getUid();
 
+
+    int getTid();
+
+
+    int getPriority();
+    void setPriority(int priority);
+
+    void setTimeSlice(int timeSlice);
+    int getTimeSlice();
+    void addTimeSlice(int num);
+  private:
+    void setUid();
+    void setTid();
   private:
     // some of the private data for this class is listed above
     

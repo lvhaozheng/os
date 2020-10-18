@@ -27,10 +27,14 @@ class Scheduler {
 					// list, if any, and return thread.
     void Run(Thread* nextThread);	// Cause nextThread to start running
     void Print();			// Print contents of ready list
-    
+    void PrintThreads();  //Print contents of all thread
+    void InsertThread(Thread* thread,bool isHeadInsert); // to thread list insert item
+    void DeleteThread(Thread* thread); // delete item from thread list
+    void MinusTimeSlice(Thread* thread); //minus time slice
   private:
     List *readyList;  		// queue of threads that are ready to run,
 				// but not running
+	List *threadList; //queue of all threads
 };
 
 #endif // SCHEDULER_H

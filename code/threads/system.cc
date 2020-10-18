@@ -8,6 +8,11 @@
 #include "copyright.h"
 #include "system.h"
 
+
+bool ThreadPool[MaxNumThread];
+int curPointer; //Last assigned location
+int curThreadNum; //Number of current threads
+
 // This defines *all* of the global data structures used by Nachos.
 // These are all initialized and de-allocated by this file.
 
@@ -62,6 +67,8 @@ TimerInterruptHandler(int dummy)
 {
     if (interrupt->getStatus() != IdleMode)
 	interrupt->YieldOnReturn();
+
+    scheduler->MinusTimeSlice(currentThread);
 }
 
 //----------------------------------------------------------------------
@@ -80,7 +87,7 @@ Initialize(int argc, char **argv)
     int argCount;
     char* debugArgs = "";
     bool randomYield = FALSE;
-
+    bool randomRobin = FALSE;
 #ifdef USER_PROGRAM
     bool debugUserProg = FALSE;	// single step user program
 #endif
@@ -107,7 +114,12 @@ Initialize(int argc, char **argv)
 						// number generator
 	    randomYield = TRUE;
 	    argCount = 2;
-	}
+	} else if (!strcmp(*argv, "-rr")) {
+        ASSERT(argc > 1);
+        // number generator
+        randomRobin = TRUE;
+        argCount = 2;
+    }
 #ifdef USER_PROGRAM
 	if (!strcmp(*argv, "-s"))
 	    debugUserProg = TRUE;
@@ -136,14 +148,17 @@ Initialize(int argc, char **argv)
     if (randomYield)				// start the timer (if needed)
 	timer = new Timer(TimerInterruptHandler, 0, randomYield);
 
+    if(randomRobin)
+    timer  = new Timer(TimerInterruptHandler, 0, false);
+
     threadToBeDestroyed = NULL;
 
     // We didn't explicitly allocate the current thread we are running in.
     // But if it ever tries to give up the CPU, we better have a Thread
     // object to save its state. 
-    currentThread = new Thread("main");		
+    currentThread = new Thread("main");
+    currentThread->setPriority(0);
     currentThread->setStatus(RUNNING);
-
     interrupt->Enable();
     CallOnUserAbort(Cleanup);			// if user hits ctl-C
     
