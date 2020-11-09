@@ -44,6 +44,29 @@ StartProcess(char *filename)
 					// by doing the syscall "exit"
 }
 
+void
+demandPagingTest(char *filename)
+{
+    OpenFile *executable = fileSystem->Open(filename);
+    AddrSpace *space;
+
+    if (executable == NULL) {
+        printf("Unable to open file %s\n", filename);
+        return;
+    }
+    space = new AddrSpace(executable,3);
+    currentThread->space = space;
+
+    delete executable;			// close files
+
+    space->InitRegisters();		// set the initial register values
+    space->RestoreState();		// load page table register
+
+    machine->Run();			// jump to the user progam
+    ASSERT(FALSE);			// machine->Run never returns;
+    // the address space exits
+    // by doing the syscall "exit"
+}
 // Data structures needed for the console test.  Threads making
 // I/O requests wait on a Semaphore to delay until the I/O completes.
 
@@ -81,4 +104,42 @@ ConsoleTest (char *in, char *out)
 	writeDone->P() ;        // wait for write to finish
 	if (ch == 'q') return;  // if q, quit
     }
+}
+
+void
+PlainThread(int which){
+    printf("开始执行创建的线程\n");
+    machine->Run();
+}
+void
+MulThread(char *filename){
+    OpenFile *executable = fileSystem->Open(filename);
+    AddrSpace *space;
+    OpenFile *executable1 = fileSystem->Open(filename);
+    AddrSpace *space1;
+    Thread *thread = new Thread("new_thread");
+    if (executable == NULL) {
+        printf("Unable to open file %s\n", filename);
+        return;
+    }
+    printf("main线程内存分配\n");
+    space = new AddrSpace(executable);
+    printf("创建新线程的内存分配\n");
+    space1 = new AddrSpace(executable1);
+    currentThread->space = space;
+    space1->InitRegisters();
+    space1->RestoreState();
+    thread->space = space1;
+    thread->Fork(PlainThread,1);
+    currentThread->Yield();
+    delete executable;			// close file
+    delete executable1;
+
+    space->InitRegisters();		// set the initial register values
+
+    space->RestoreState();		// load page table register
+    machine->Run();			// jump to the user progam
+    ASSERT(FALSE);			// machine->Run never returns;
+    // the address space exits
+    // by doing the syscall "exit"
 }

@@ -48,16 +48,51 @@
 //	are in machine.h.
 //----------------------------------------------------------------------
 
+int position=0;
 void
 ExceptionHandler(ExceptionType which)
 {
     int type = machine->ReadRegister(2);
 
-    if ((which == SyscallException) && (type == SC_Halt)) {
-	DEBUG('a', "Shutdown, initiated by user program.\n");
-   	interrupt->Halt();
-    } else {
-	printf("Unexpected user mode exception %d %d\n", which, type);
-	ASSERT(FALSE);
+    if ((which == SyscallException)) {
+        if (type == SC_Halt) {
+            printf("TLB Miss: %d, TLB Hit: %d, Total Translate: %d, TLB Miss Rate: %.2lf%%\n",
+                   TLBMissNumber, TLBTranslateNumber - TLBMissNumber, TLBTranslateNumber,
+                   (double) (TLBMissNumber * 100) / (TLBTranslateNumber));
+            interrupt->Halt();
+        }else if(type == SC_Exit){
+            printf("exit program\n");
+            if(currentThread->space!=NULL){
+                machine->freeMemory();
+                delete currentThread->space;
+                currentThread->space = NULL;
+                currentThread->Finish();
+            }
+        }
+    } else if(which == PageFaultException) {
+        TLBMissNumber++;
+        if(machine->tlb == NULL) {
+
+        }else {
+            DEBUG('m', " <-- TLB Miss -->\n");
+            int addr = machine->ReadRegister(BadVAddrReg);
+//            exercise2 缺页处理
+//            unsigned int vpn = (unsigned) addr / PageSize;
+//            position = position%TLBSize;
+//            machine->tlb[position] = machine->pageTable[vpn];
+//            position++;
+//            if (position==0) position=1;
+//            else position=0;
+#ifdef TLB_LRU
+        machine->TLBLRUSwap(addr);
+#endif
+#ifdef TLB_CLOCK
+    machine->TLBClockSwap(addr);
+#endif
+        }
+        return;
+    }else {
+        printf("Unexpected user mode exception %d %d\n", which, type);
+        ASSERT(FALSE);
     }
 }

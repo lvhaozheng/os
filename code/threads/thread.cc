@@ -298,12 +298,12 @@ Thread::Yield ()
 
     nextThread = scheduler->FindNextToRun();
     if (nextThread != NULL) {
-        if(nextThread->getPriority() <= this->getPriority()) {
+//        if(nextThread->getPriority() <= this->getPriority()) {
             scheduler->ReadyToRun(this);
             scheduler->Run(nextThread);
-        }else{
-            scheduler->InsertThread(nextThread, true);
-        }
+//        }else{
+//            scheduler->InsertThread(nextThread, true);
+//        }
     }
     (void) interrupt->SetLevel(oldLevel);
 }

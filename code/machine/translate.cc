@@ -186,6 +186,7 @@ Machine::WriteMem(int addr, int size, int value)
 ExceptionType
 Machine::Translate(int virtAddr, int* physAddr, int size, bool writing)
 {
+    TLBTranslateNumber++;
     int i;
     unsigned int vpn, offset;
     TranslationEntry *entry;
@@ -200,7 +201,7 @@ Machine::Translate(int virtAddr, int* physAddr, int size, bool writing)
     }
     
     // we must have either a TLB or a page table, but not both!
-    ASSERT(tlb == NULL || pageTable == NULL);	
+//    ASSERT(tlb == NULL || pageTable == NULL);
     ASSERT(tlb != NULL || pageTable != NULL);	
 
 // calculate the virtual page number, and offset within the page,
