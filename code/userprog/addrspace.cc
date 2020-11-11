@@ -18,7 +18,7 @@
 #include "copyright.h"
 #include "system.h"
 #include "addrspace.h"
-#include "noff.h"
+//#include "noff.h"
 #ifdef HOST_SPARC
 #include <strings.h>
 #endif
@@ -85,22 +85,99 @@ AddrSpace::AddrSpace(OpenFile *executable)
 
     DEBUG('a', "Initializing address space, num pages %d, size %d\n", 
 					numPages, size);
-// first, set up the translation 
-    pageTable = new TranslationEntry[numPages];
-    for (i = 0; i < numPages; i++) {
-	pageTable[i].virtualPage = i;	// for now, virtual page # = phys page #
-	pageTable[i].physicalPage = machine->allocateMemory();
-	pageTable[i].valid = TRUE;
-	pageTable[i].use = FALSE;
-	pageTable[i].dirty = FALSE;
-	pageTable[i].readOnly = FALSE;  // if the code segment was entirely on 
-					// a separate page, we could set its 
-					// pages to be read-only
-    }
+
     
 
-#ifdef MULT_THREAD
-    // lab2 exercise5 支持多线程，根据分配的物理内存将文件放到内存当中
+#ifdef REVERSE_PAGE
+    int num = 0;
+    while(num < numPages){
+        bool flag = true; //用来标志是否有有效内存
+        for (i = 0; i < NumPhysPages; i++) {
+            if(!machine->pageTable[i].valid){
+                flag=false;
+                machine->pageTable[i].virtualPage = num;
+                machine->pageTable[i].physicalPage = machine->allocateMemory();
+                machine->pageTable[i].valid = TRUE;
+                machine->pageTable[i].use = FALSE;
+                machine->pageTable[i].dirty = FALSE;
+                machine->pageTable[i].readOnly = FALSE;
+                machine->pageTable[i].tid = currentThread->getTid(); // The additional part of inverted page table
+                break;
+            }
+        }
+        if(flag) {
+            ASSERT(FALSE);
+        }
+        num++;
+    }
+        int num = 0;
+    while(num < numPages){
+        bool flag = true; //用来标志是否有有效内存
+        for (i = 0; i < NumPhysPages; i++) {
+            if(!machine->pageTable[i].valid){
+                flag=false;
+                machine->pageTable[i].virtualPage = num;
+                machine->pageTable[i].physicalPage = machine->allocateMemory();
+                machine->pageTable[i].valid = TRUE;
+                machine->pageTable[i].use = FALSE;
+                machine->pageTable[i].dirty = FALSE;
+                machine->pageTable[i].readOnly = FALSE;
+                machine->pageTable[i].tid = currentThread->getTid(); // The additional part of inverted page table
+                break;
+            }
+        }
+        if(flag) {
+            ASSERT(FALSE);
+        }
+        num++;
+    }
+    if(noffH.code.size > 0){
+        DEBUG('a', "Initializing code segment, at 0x%x, size %d\n",
+        	noffH.code.virtualAddr, noffH.code.size);
+        int position = noffH.code.inFileAddr;
+        for(int num=0; num < noffH.code.size; num += PageSize){ //根据物理地址每次读取一页
+            unsigned int vpn = (unsigned)((noffH.code.virtualAddr + num) / PageSize);
+            unsigned int physicalAddr ;
+            for (i = 0; i < NumPhysPages; i++) {
+                if(machine->pageTable[i].virtualPage == vpn){
+                    physicalAddr = (unsigned)(machine->pageTable[i].physicalPage * PageSize);
+                }
+            }
+            executable->ReadAt(&(machine->mainMemory[physicalAddr]),PageSize,position);
+            position += PageSize;
+        }
+    }
+    if (noffH.initData.size > 0) {
+        DEBUG('a', "Initializing data segment, at 0x%x, size %d\n",
+    		noffH.initData.virtualAddr, noffH.initData.size);
+        int position = noffH.initData.inFileAddr;
+        for(int num=0; num < noffH.initData.size; num += PageSize){ //根据物理地址每次读取一页
+            unsigned int vpn = (unsigned)((noffH.initData.virtualAddr + num) / PageSize);
+            unsigned int physicalAddr;
+            for (i = 0; i < NumPhysPages; i++) {
+                if(machine->pageTable[i].virtualPage == vpn){
+                    physicalAddr = (unsigned)(machine->pageTable[i].physicalPage * PageSize);
+                }
+            }
+            executable->ReadAt(&(machine->mainMemory[physicalAddr]),PageSize,position);
+            position += PageSize;
+        }
+    }
+#elif USE_BITMAP
+    // first, set up the translation
+    pageTable = new TranslationEntry[numPages];
+    for (i = 0; i < numPages; i++) {
+        pageTable[i].virtualPage = i;	// for now, virtual page # = phys page #
+        pageTable[i].physicalPage = machine->allocateMemory();
+        pageTable[i].valid = TRUE;
+        pageTable[i].use = FALSE;
+        pageTable[i].dirty = FALSE;
+        pageTable[i].readOnly = FALSE;  // if the code segment was entirely on
+                        // a separate page, we could set its
+                        // pages to be read-only
+    }
+    bzero(machine->mainMemory, size);
+        // lab2 exercise4 根据分配的物理内存将文件放到内存当中
     if(noffH.code.size > 0){
         DEBUG('a', "Initializing code segment, at 0x%x, size %d\n",
         	noffH.code.virtualAddr, noffH.code.size);
@@ -111,27 +188,36 @@ AddrSpace::AddrSpace(OpenFile *executable)
 //            unsigned int physicalAddr = (unsigned)(pageTable[vpn].physicalPage * PageSize + offset);
 //            executable->ReadAt(&(machine->mainMemory[physicalAddr]),1,position);
 //        }
-        for(int num=0; num < noffH.code.size; num++){ //根据物理地址每次读取一页
-            unsigned int vpn = (unsigned)((noffH.code.virtualAddr + num * PageSize) / PageSize);
+        for(int num=0; num < noffH.code.size; num += PageSize){ //根据物理地址每次读取一页
+            unsigned int vpn = (unsigned)((noffH.code.virtualAddr + num) / PageSize);
             unsigned int physicalAddr = (unsigned)(pageTable[vpn].physicalPage * PageSize);
-            size = (noffH.code.size - num) < PageSize ? (noffH.code.size - num) : PageSize;
-            executable->ReadAt(&(machine->mainMemory[physicalAddr]),size,position);
-            position += size;
+            executable->ReadAt(&(machine->mainMemory[physicalAddr]),PageSize,position);
+            position += PageSize;
         }
     }
     if (noffH.initData.size > 0) {
         DEBUG('a', "Initializing data segment, at 0x%x, size %d\n",
     		noffH.initData.virtualAddr, noffH.initData.size);
         int position = noffH.initData.inFileAddr;
-        for(int num=0; num < noffH.initData.size; num+=PageSize){ //根据物理地址每次读取一页
-            unsigned int vpn = (unsigned)((noffH.initData.virtualAddr + num * PageSize) / PageSize);
+        for(int num=0; num < noffH.initData.size; num += PageSize){ //根据物理地址每次读取一页
+            unsigned int vpn = (unsigned)((noffH.initData.virtualAddr + num) / PageSize);
             unsigned int physicalAddr = (unsigned)(pageTable[vpn].physicalPage * PageSize);
-            size = (noffH.initData.size - num) < PageSize ? (noffH.initData.size - num) : PageSize;
-            executable->ReadAt(&(machine->mainMemory[physicalAddr]),size,position);
-            position += size;
+            executable->ReadAt(&(machine->mainMemory[physicalAddr]),PageSize,position);
+            position += PageSize;
         }
     }
 #else
+    pageTable = new TranslationEntry[numPages];
+    for (i = 0; i < numPages; i++) {
+        pageTable[i].virtualPage = i;	// for now, virtual page # = phys page #
+        pageTable[i].physicalPage = i;
+        pageTable[i].valid = TRUE;
+        pageTable[i].use = FALSE;
+        pageTable[i].dirty = FALSE;
+        pageTable[i].readOnly = FALSE;  // if the code segment was entirely on
+        // a separate page, we could set its
+        // pages to be read-only
+    }
     // zero out the entire address space, to zero the unitialized data segment
 // and the stack segment
     bzero(machine->mainMemory, size);
@@ -153,6 +239,7 @@ AddrSpace::AddrSpace(OpenFile *executable)
 
 AddrSpace::AddrSpace(OpenFile *executable,int restructure)
 {
+
     NoffHeader noffH;
     unsigned int i, size;
     executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
@@ -160,26 +247,29 @@ AddrSpace::AddrSpace(OpenFile *executable,int restructure)
         (WordToHost(noffH.noffMagic) == NOFFMAGIC))
         SwapHeader(&noffH);
     ASSERT(noffH.noffMagic == NOFFMAGIC);
-
+    this->executable = executable;
+    this->noffH = noffH;
+//    printf("noffH.code.virtual: %d, noffH.code.size: %d,noffH.code.inFileAddr: %d,\n",noffH.code.virtualAddr,noffH.code.size,noffH.code.inFileAddr);
+//    printf("noffH.init.virtual: %d, noffH.initData.size: %d,noffH.initData.inFileAddr: %d\n",noffH.initData.virtualAddr,noffH.initData.inFileAddr);
+//    printf("noffH.uninitData.virtual: %d, noffH.uninitData.size: %d, noffH.uninitData.inFileAddr: %d\n",noffH.uninitData.virtualAddr,noffH.uninitData.inFileAddr);
 // how big is address space?
     size = noffH.code.size + noffH.initData.size + noffH.uninitData.size
            + UserStackSize;	// we need to increase the size
+
     // to leave room for the stack
     numPages = divRoundUp(size, PageSize);
-    virPages = numPages;
     size = numPages * PageSize;
-
+    printf("size : %d\n",size);
 //    ASSERT(numPages <= NumPhysPages);		// check we're not trying
 //    // to run anything too big --
 //    // at least until we have
 //    // virtual memory
-    virtualMemory = new char[numPages * PageSize];
-    for(int i=0;i<numPages * PageSize;i++){
-        virtualMemory[i] = 0;
-    }
     DEBUG('a', "Initializing address space, num pages %d, size %d\n",
           numPages, size);
+    bzero(machine->mainMemory, MemorySize);
 // first, set up the translation
+
+#ifndef  REVERSE_PAGE
     pageTable = new TranslationEntry[numPages];
     for (i = 0; i < numPages; i++) {
         pageTable[i].virtualPage = i;	// for now, virtual page # = phys page #
@@ -191,19 +281,31 @@ AddrSpace::AddrSpace(OpenFile *executable,int restructure)
         // a separate page, we could set its
         // pages to be read-only
     }
-    if (noffH.code.size > 0) {
-        DEBUG('a', "\tCopying code segment, at 0x%x, size %d\n",
-              noffH.code.virtualAddr, noffH.code.size);
-        executable->ReadAt(&(virtualMemory[noffH.code.virtualAddr]),
-                           noffH.code.size, noffH.code.inFileAddr);
+#else
+    int num = 0;
+    while(num < numPages){
+        bool flag = true; //用来标志是否有有效内存
+        for (i = 0; i < NumPhysPages; i++) {
+            if(!machine->pageTable[i].valid){
+                flag=false;
+                machine->pageTable[i].virtualPage = num;
+                machine->pageTable[i].physicalPage = machine->allocateMemory();
+                machine->pageTable[i].valid = TRUE;
+                machine->pageTable[i].use = FALSE;
+                machine->pageTable[i].dirty = FALSE;
+                machine->pageTable[i].readOnly = FALSE;
+                machine->pageTable[i].tid = currentThread->getTid(); // The additional part of inverted page table
+                break;
+            }
+        }
+        if(flag) {
+            printf("out of memory\n");
+        }
+        num++;
     }
-    if (noffH.initData.size > 0) {
-        DEBUG('a', "\tCopying data segment, at 0x%x, size %d\n",
-              noffH.initData.virtualAddr, noffH.initData.size);
-        executable->ReadAt(&(virtualMemory[noffH.initData.virtualAddr]),
-                           noffH.initData.size, noffH.initData.inFileAddr);
-    }
+#endif
 }
+
 //----------------------------------------------------------------------
 // AddrSpace::~AddrSpace
 // 	Dealloate an address space.  Nothing for now!
@@ -211,6 +313,7 @@ AddrSpace::AddrSpace(OpenFile *executable,int restructure)
 
 AddrSpace::~AddrSpace()
 {
+    delete executable;
    delete pageTable;
 }
 
@@ -273,6 +376,27 @@ void AddrSpace::SaveState()
 
 void AddrSpace::RestoreState() 
 {
+#ifndef REVERSE_PAGE
     machine->pageTable = pageTable;
     machine->pageTableSize = numPages;
+#endif
+}
+
+void
+AddrSpace::PrintState()
+{
+    printf("=== %s ===\n",  "Address Space Information");
+    printf("numPages = %d\n", numPages);
+    printf("VPN\tPPN\tvalid\tRO\tuse\tdirty\n");
+    for (int i = 0; i < numPages; i++) {
+        printf("%d\t", pageTable[i].virtualPage);
+        printf("%d\t", pageTable[i].physicalPage);
+        printf("%d\t", pageTable[i].valid);
+        printf("%d\t", pageTable[i].use);
+        printf("%d\t", pageTable[i].dirty);
+        printf("%d\t", pageTable[i].readOnly);
+        printf("\n");
+    }
+    machine->bitmap->Print();
+    printf("=================================\n");
 }

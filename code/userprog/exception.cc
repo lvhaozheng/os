@@ -53,14 +53,23 @@ void
 ExceptionHandler(ExceptionType which)
 {
     int type = machine->ReadRegister(2);
-
     if ((which == SyscallException)) {
         if (type == SC_Halt) {
             printf("TLB Miss: %d, TLB Hit: %d, Total Translate: %d, TLB Miss Rate: %.2lf%%\n",
                    TLBMissNumber, TLBTranslateNumber - TLBMissNumber, TLBTranslateNumber,
                    (double) (TLBMissNumber * 100) / (TLBTranslateNumber));
+            printf("halt program\n");
+            if(currentThread->space!=NULL){
+                machine->freeMemory();
+                delete currentThread->space;
+                currentThread->space = NULL;
+                currentThread->Finish();
+            }
             interrupt->Halt();
         }else if(type == SC_Exit){
+            printf("TLB Miss: %d, TLB Hit: %d, Total Translate: %d, TLB Miss Rate: %.2lf%%\n",
+                   TLBMissNumber, TLBTranslateNumber - TLBMissNumber, TLBTranslateNumber,
+                   (double) (TLBMissNumber * 100) / (TLBTranslateNumber));
             printf("exit program\n");
             if(currentThread->space!=NULL){
                 machine->freeMemory();
@@ -71,12 +80,12 @@ ExceptionHandler(ExceptionType which)
         }
     } else if(which == PageFaultException) {
         TLBMissNumber++;
-        if(machine->tlb == NULL) {
+        if(machine->tlb == NULL) { //没有tlb
 
         }else {
             DEBUG('m', " <-- TLB Miss -->\n");
             int addr = machine->ReadRegister(BadVAddrReg);
-//            exercise2 缺页处理
+            //exercise2 缺页处理
 //            unsigned int vpn = (unsigned) addr / PageSize;
 //            position = position%TLBSize;
 //            machine->tlb[position] = machine->pageTable[vpn];

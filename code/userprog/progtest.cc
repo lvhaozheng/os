@@ -57,8 +57,6 @@ demandPagingTest(char *filename)
     space = new AddrSpace(executable,3);
     currentThread->space = space;
 
-    delete executable;			// close files
-
     space->InitRegisters();		// set the initial register values
     space->RestoreState();		// load page table register
 

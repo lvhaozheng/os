@@ -16,6 +16,7 @@ int
 main()
 {
 //#ifdef EXIT
+    int i=0;
     Exit(0);
 //#endif
 //    Halt();
