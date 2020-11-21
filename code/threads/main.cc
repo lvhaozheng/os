@@ -61,7 +61,7 @@ extern int testnum;
 
 extern void ThreadTest(void), Copy(char *unixFile, char *nachosFile);
 extern void Print(char *file), PerformanceTest(void);
-extern void StartProcess(char *file), ConsoleTest(char *in, char *out);
+extern void StartProcess(char *file), ConsoleTest(char *in, char *out),MulThread(char *file),demandPagingTest(char *file);
 extern void MailTest(int networkID);
 
 //----------------------------------------------------------------------
@@ -113,7 +113,16 @@ main(int argc, char **argv)
 	    ASSERT(argc > 1);
             StartProcess(*(argv + 1));
             argCount = 2;
-        } else if (!strcmp(*argv, "-c")) {      // test the console
+        } else if(!strcmp(*argv, "-m")){
+             ASSERT(argc > 1);
+            MulThread(*(argv + 1));
+            argCount = 2;
+        }else if(!strcmp(*argv, "-dp")){
+             ASSERT(argc > 1);
+            demandPagingTest(*(argv + 1));
+            argCount = 2;
+        }
+        else if (!strcmp(*argv, "-c")) {      // test the console
 	    if (argc == 1)
 	        ConsoleTest(NULL, NULL);
 	    else {

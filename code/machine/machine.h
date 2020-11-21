@@ -25,9 +25,12 @@
 #include "utility.h"
 #include "translate.h"
 #include "disk.h"
-
+#include "bitmap.h"
 // Definitions related to the size, and format of user memory
 
+extern int pointerClock;
+extern int TLBMissNumber;
+extern int TLBTranslateNumber;
 #define PageSize 	SectorSize 	// set the page size equal to
 					// the disk sector size, for
 					// simplicity
@@ -178,9 +181,16 @@ class Machine {
 
     TranslationEntry *tlb;		// this pointer should be considered 
 					// "read-only" to Nachos kernel code
-
+    void TLBLRUSwap(int addr);
+    void TLBClockSwap(int addr);
     TranslationEntry *pageTable;
     unsigned int pageTableSize;
+
+  public:
+    BitMap *bitmap;
+    int allocateMemory();
+    void freeMemory();
+    void demandPaging(int vpn);
 
   private:
     bool singleStep;		// drop back into the debugger after each

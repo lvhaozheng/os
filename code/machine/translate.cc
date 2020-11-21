@@ -186,6 +186,7 @@ Machine::WriteMem(int addr, int size, int value)
 ExceptionType
 Machine::Translate(int virtAddr, int* physAddr, int size, bool writing)
 {
+    TLBTranslateNumber++;
     int i;
     unsigned int vpn, offset;
     TranslationEntry *entry;
@@ -200,7 +201,7 @@ Machine::Translate(int virtAddr, int* physAddr, int size, bool writing)
     }
     
     // we must have either a TLB or a page table, but not both!
-    ASSERT(tlb == NULL || pageTable == NULL);	
+//    ASSERT(tlb == NULL || pageTable == NULL);
     ASSERT(tlb != NULL || pageTable != NULL);	
 
 // calculate the virtual page number, and offset within the page,
@@ -209,16 +210,35 @@ Machine::Translate(int virtAddr, int* physAddr, int size, bool writing)
     offset = (unsigned) virtAddr % PageSize;
     
     if (tlb == NULL) {		// => page table => vpn is index into table
-	if (vpn >= pageTableSize) {
-	    DEBUG('a', "virtual page # %d too large for page table size %d!\n", 
-			virtAddr, pageTableSize);
-	    return AddressErrorException;
-	} else if (!pageTable[vpn].valid) {
-	    DEBUG('a', "virtual page # %d too large for page table size %d!\n", 
-			virtAddr, pageTableSize);
-	    return PageFaultException;
-	}
-	entry = &pageTable[vpn];
+#ifndef REVERSE_PAGE
+        if (vpn >= pageTableSize) {
+            DEBUG('a', "virtual page # %d too large for page table size %d!\n",
+                  virtAddr, pageTableSize);
+            return AddressErrorException;
+        } else if (!pageTable[vpn].valid) {
+            DEBUG('a', "virtual page # %d is invalid!\n");
+            return PageFaultException;
+        }
+        entry = &pageTable[vpn];
+#else
+     if (vpn >= pageTableSize) {
+        DEBUG('a', "virtual page # %d too large for page table size %d!\n",
+                  virtAddr, pageTableSize);
+         return AddressErrorException;
+     }
+     // 倒排，遍历整个线性表，找到vpn相等的地方
+     for(int i = 0; i < NumPhysPages; i ++){
+         if(pageTable[i].tid == currentThread->getTid() && pageTable[i].virtualPage == vpn){
+             if (!pageTable[i].valid) {
+                 DEBUG('a', "virtual page # %d is invalid!\n");
+                 return PageFaultException;
+             }
+             entry = &pageTable[i];
+             break;
+         }
+     }
+#endif
+
     } else {
         for (entry = NULL, i = 0; i < TLBSize; i++)
     	    if (tlb[i].valid && (tlb[i].virtualPage == vpn)) {
