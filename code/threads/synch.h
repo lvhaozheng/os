@@ -44,7 +44,7 @@ class Semaphore {
     
     void P();	 // these are the only operations on a semaphore
     void V();	 // they are both *atomic*
-    
+    int getValue(){return value;}
   private:
     char* name;        // useful for debugging
     int value;         // semaphore value, always >= 0
@@ -76,8 +76,10 @@ class Lock {
 					// holds this lock.  Useful for
 					// checking in Release, and in
 					// Condition variable ops below.
-
+    bool isLocked() { return mutex->getValue() == 0; } // 为0的话则该锁已经被持有
   private:
+    Semaphore *mutex;
+    Thread* holderThread;  //持有该锁的进程
     char* name;				// for debugging
     // plus some other stuff you'll need to define
 };
@@ -130,7 +132,41 @@ class Condition {
 					// these operations
 
   private:
+    List *blockingQueue;
     char* name;
     // plus some other stuff you'll need to define
+};
+
+class Barrier{
+    public:
+      Barrier(char* debugName,int parties);
+      ~Barrier();
+      void Await(); //在所有参与者都已经在此 barrier 上调用 await 方法之前，将一直等待。
+      int getNumberWaiting();
+    private:
+      int parties; //屏障的总数
+      int index;  //屏障到的索引，也为数量
+      char* name;
+      Lock* mutex;
+      Condition *barrierCondition;
+};
+
+class RWLock{  //读写锁
+    public:
+      RWLock(char* debugName);
+      ~RWLock();
+      void ReadAcquire();
+      void ReadRelease();
+
+      void WriteAcquire();
+      void WriteRelease();
+
+    private:
+      char* name;
+      int readerCnt;
+      int writeCnt;
+      Lock* mutex;
+      Condition* rCondition;
+      Condition* wCondition;
 };
 #endif // SYNCH_H
