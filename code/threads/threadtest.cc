@@ -11,6 +11,7 @@
 
 #include "copyright.h"
 #include "system.h"
+#include "synch.h"
 
 // testnum is set in main.cc
 int testnum = 1;
@@ -226,6 +227,175 @@ ThreadTest1()
     SimpleThread(0);
 }
 
+
+int readCount = 0;
+int writerCount = 0;
+char buffer[80];
+
+Lock* mutex = new Lock("readCount");
+Semaphore *w=new Semaphore("writer",1);
+Lock* rwMutex = new Lock("readAndWriterLock");
+Condition *writerCondition = new Condition("writerCondition");
+Condition *readerCondition = new Condition("readerCondition");
+
+void readerBySemaphore(int which){
+    int num=1;
+    while(num-->0){
+        mutex->Acquire();
+        readCount++;
+        if(readCount == 1) w->P();
+        mutex->Release();
+        printf("%s\n",buffer);
+        currentThread->Yield();
+        mutex->Acquire();
+        readCount--;
+        if(readCount==0) w->V();
+        mutex->Release();
+        printf("************************************************\n");
+        currentThread->Yield();
+    }
+}
+
+void writerBySemaphore(int which){
+    int num=4;
+    while(num-->0){
+        w->P();
+        printf("------  writer begin work ，num: %d-------\n",num);
+        printf("************************************************\n");
+        sprintf(buffer,"writer num :%d",num);
+        w->V();
+        currentThread->Yield();
+    }
+}
+
+void readerByCondition(int which){
+    int num=1;
+    while(num-->0){
+        rwMutex->Acquire();
+        while (writerCount>0){
+            printf("******  There is a writer to write again, unable to read  ******\n");
+            readerCondition->Wait(rwMutex);
+        }
+        readCount++;
+        rwMutex->Release();
+        printf("%s\n",buffer);
+        currentThread->Yield();
+        rwMutex->Acquire();
+        readCount--;
+        if(readCount==0) writerCondition->Signal(rwMutex);
+        rwMutex->Release();
+        currentThread->Yield();
+    }
+}
+
+void writerByCondition(int which){
+    int num=4;
+    while(num-->0){
+        rwMutex->Acquire();
+        while (writerCount > 0 || readCount > 0) { //有读者和写者，则释放锁，等待读者和写者结束
+            printf("****** There is a writer or read to do, unable to write ******\n");
+            writerCondition->Wait(rwMutex);
+        }
+        writerCount++;
+        rwMutex->Release();
+        sprintf(buffer,"writer num :%d",num);
+        rwMutex->Acquire();
+        writerCount--;
+        readerCondition->Broadcast(rwMutex);
+        writerCondition->Signal(rwMutex);
+        rwMutex->Release();
+        currentThread->Yield();
+    }
+}
+
+RWLock *rwLock = new RWLock("rwLock");
+void readerByRWLock(int which){
+    int num=1;
+    while(num-->0){
+        rwLock->ReadAcquire();
+        printf("%s\n",buffer);
+        currentThread->Yield();
+        rwLock->ReadRelease();
+        currentThread->Yield();
+    }
+}
+
+void writerByRWLock(int which){
+    int num=4;
+    while(num-->0){
+        rwLock->WriteAcquire();
+        sprintf(buffer,"writer num :%d",num);
+        currentThread->Yield();
+        rwLock->WriteRelease();
+        currentThread->Yield();
+    }
+}
+
+void
+ProcessSynchronizationTest1(){
+    sprintf(buffer, "initial %s","data");
+    Thread *reader1= new Thread("reader1");
+    reader1->Fork(readerBySemaphore,1);
+    Thread *reader2= new Thread("reader2");
+    reader2->Fork(readerBySemaphore,2);
+    Thread *writer1= new Thread("writer");
+    writer1->Fork(writerBySemaphore,1);
+    Thread *reader3= new Thread("reader3");
+    reader3->Fork(readerBySemaphore,3);
+    Thread *reader4= new Thread("reader4");
+    reader4->Fork(readerBySemaphore,4);
+}
+
+void
+ProcessSynchronizationTest2(){
+    sprintf(buffer, "initial %s","data");
+    Thread *reader1= new Thread("reader1");
+    reader1->Fork(readerByCondition,1);
+    Thread *reader2= new Thread("reader2");
+    reader2->Fork(readerByCondition,2);
+    Thread *writer1= new Thread("writer1");
+    writer1->Fork(writerByCondition,1);
+    Thread *writer2= new Thread("writer2");
+    writer2->Fork(writerByCondition,2);
+    Thread *reader3= new Thread("reader3");
+    reader3->Fork(readerByCondition,3);
+    Thread *reader4= new Thread("reader4");
+    reader4->Fork(readerByCondition,4);
+}
+
+void
+ProcessSynchronizationTest3(){
+    sprintf(buffer, "initial %s","data");
+    Thread *reader1= new Thread("reader1");
+    reader1->Fork(readerByRWLock,1);
+    Thread *reader2= new Thread("reader2");
+    reader2->Fork(readerByRWLock,2);
+    Thread *writer1= new Thread("writer1");
+    writer1->Fork(writerByRWLock,1);
+    Thread *reader3= new Thread("reader3");
+    reader3->Fork(readerByRWLock,3);
+    Thread *reader4= new Thread("reader4");
+    reader4->Fork(readerByRWLock,4);
+
+}
+
+Barrier *barrier=new Barrier("barrier",4);
+void barrierThread(int which){
+    printf("thread name (%s) start with %d threads waiting\n",currentThread->getName(),barrier->getNumberWaiting());
+    barrier->Await();
+    printf("thread name (%s) execute\n", currentThread->getName());
+}
+
+void barrierTest(){
+    Thread *t1=new Thread("thread1");
+    t1->Fork(barrierThread,t1->getTid());
+    Thread *t2=new Thread("thread2");
+    t2->Fork(barrierThread,t1->getTid());
+    Thread *t3=new Thread("thread3");
+    t3->Fork(barrierThread,t1->getTid());
+    Thread *t4=new Thread("thread4");
+    t4->Fork(barrierThread,t1->getTid());
+}
 //----------------------------------------------------------------------
 // ThreadTest
 // 	Invoke a test routine.
@@ -247,6 +417,14 @@ ThreadTest()
         TestTimeSliceThread();break;
     case 6:
         TestQueueThread();break;
+    case 7:
+        ProcessSynchronizationTest1();break;
+        case 8:
+            ProcessSynchronizationTest2();break;
+        case 9:
+            barrierTest();break;
+        case 10:
+            ProcessSynchronizationTest3();break;
     default:
 	printf("No test specified.\n");
 	break;

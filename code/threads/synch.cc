@@ -65,12 +65,11 @@ void
 Semaphore::P()
 {
     IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
-    
     while (value == 0) { 			// semaphore not available
 	queue->Append((void *)currentThread);	// so go to sleep
 	currentThread->Sleep();
-    } 
-    value--; 					// semaphore available, 
+    }
+    value--; 					// semaphore available,
 						// consume its value
     
     (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
@@ -89,7 +88,6 @@ Semaphore::V()
 {
     Thread *thread;
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
-
     thread = (Thread *)queue->Remove();
     if (thread != NULL)	   // make thread ready, consuming the V immediately
 	scheduler->ReadyToRun(thread);
@@ -100,13 +98,187 @@ Semaphore::V()
 // Dummy functions -- so we can compile our later assignments 
 // Note -- without a correct implementation of Condition::Wait(), 
 // the test case in the network assignment won't work!
-Lock::Lock(char* debugName) {}
-Lock::~Lock() {}
-void Lock::Acquire() {}
-void Lock::Release() {}
+    mutex = new Semaphore(debugName,1);
+    name = debugName;
+}
+Lock::~Lock() {
+    delete mutex;
+}
+void Lock::Acquire() {
 
-Condition::Condition(char* debugName) { }
-Condition::~Condition() { }
-void Condition::Wait(Lock* conditionLock) { ASSERT(FALSE); }
-void Condition::Signal(Lock* conditionLock) { }
-void Condition::Broadcast(Lock* conditionLock) { }
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+    DEBUG('s',"Acquire lock name %s, thread name %s\n", name, currentThread->getName());
+    mutex->P();
+    holderThread = currentThread;
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+void Lock::Release() {
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+    DEBUG('s',"Release lock name %s, thread name %s\n", name, currentThread->getName());
+    mutex->V();
+    holderThread = NULL;
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+bool Lock::isHeldByCurrentThread() {
+    return holderThread == currentThread;
+}
+
+Condition::Condition(char* debugName) {
+    name = debugName;
+    blockingQueue = new List;
+}
+Condition::~Condition() {
+    delete blockingQueue;
+}
+
+//根据老师上课所讲，wait分为三步 1、解锁 2、等待 3、上锁
+void Condition::Wait(Lock* conditionLock) {
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+
+    ASSERT(conditionLock->isLocked()) //after lock ,then call wait function
+    ASSERT(conditionLock->isHeldByCurrentThread()) //when the lock is holded by current thread, it can execute wait
+
+    //
+    // 1. Release the lock while it waits
+    conditionLock->Release();
+    // 2. wait
+    blockingQueue->Append((void *)currentThread);
+    currentThread->Sleep();
+    // 3.acquire lock again
+    conditionLock->Acquire();
+
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+void Condition::Signal(Lock* conditionLock) {
+
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+
+    ASSERT(conditionLock->isHeldByCurrentThread()) //when the lock is holded by current thread, it can execute wait
+
+    Thread *thread = (Thread *)blockingQueue->Remove();
+    if (thread != NULL)	   // signal the thread
+        scheduler->ReadyToRun(thread);
+
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+void Condition::Broadcast(Lock* conditionLock) {
+
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+
+    ASSERT(conditionLock->isHeldByCurrentThread()) //when the lock is holded by current thread, it can execute wait
+
+    while(!blockingQueue->IsEmpty()) {
+        Thread *thread = (Thread *) blockingQueue->Remove();
+        if (thread != NULL)       // signal the thread
+            scheduler->ReadyToRun(thread);
+    }
+
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+
+
+
+Barrier::Barrier(char *debugName, int parties) {
+    name = debugName;
+    if(parties<0) {
+        DEBUG('s',"the barrier num invalid\n");
+        ASSERT(parties > 0);
+    }
+    this->parties = parties;
+    index = 0;
+    mutex = new Lock("barrier lock");
+    barrierCondition = new Condition("barrier condition");
+
+}
+
+Barrier::~Barrier() {
+    delete mutex;
+    delete barrierCondition;
+}
+
+void Barrier::Await() {
+
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+
+    mutex->Acquire();
+    index++;
+    DEBUG('s',"Thread name: %s add to barrier, there are %d threads in the barrier\n",currentThread->getName(), index);
+
+    if(index == parties){
+        DEBUG('s',"Everyone has arrived\n");
+        barrierCondition->Broadcast(mutex);
+        index = 0;
+    }else{
+        barrierCondition->Wait(mutex);
+    }
+    mutex->Release();
+
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+
+int Barrier::getNumberWaiting() {
+    return index;
+}
+
+
+RWLock::RWLock(char *debugName) {
+    name = debugName;
+
+    mutex = new Lock("rw lock");
+
+    readerCnt = 0;
+
+    rCondition = new Condition("read condition");
+    wCondition = new Condition("write condition");
+}
+
+RWLock::~RWLock() {
+    delete mutex;
+    delete rCondition;
+    delete wCondition;
+}
+
+void RWLock::ReadAcquire() {
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+    mutex->Acquire();
+    while (writeCnt > 0){
+        DEBUG('s',"******  There is a writer to write again, unable to read  ******\n");
+        rCondition->Wait(mutex);
+    }
+    readerCnt++;
+    mutex->Release();
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+
+void RWLock::ReadRelease() {
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+    mutex->Acquire();
+    readerCnt--;
+    if (readerCnt == 0) wCondition->Signal(mutex);
+    mutex->Release();
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+
+void RWLock::WriteAcquire() {
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+    mutex->Acquire();
+    while (writeCnt > 0 || readerCnt > 0){
+        DEBUG('s',"******  There is a writer to write again, unable to write  ******\n");
+        wCondition->Wait(mutex);
+    }
+    writeCnt++;
+    mutex->Release();
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+}
+
+void RWLock::WriteRelease() {
+
+    IntStatus oldLevel = interrupt->SetLevel(IntOff);	// disable interrupts
+    mutex->Acquire();
+    writeCnt--;
+    rCondition->Broadcast(mutex);
+    wCondition->Signal(mutex);
+    mutex->Release();
+    (void) interrupt->SetLevel(oldLevel);	// re-enable interrupts
+
+}
